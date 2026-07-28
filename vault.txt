@@ -1,0 +1,54 @@
+.vault file format:
+
+0x0 (uint64): Pointer to beginning of nameTree. By default this will (probably) be at 256 bytes (0x100)
+0x8 (uint64): Pointer to the beginning of file data, must be a multiple of 8 bytes
+0x10 (uint64): Encryption salt
+0x18: (uint64): Encryption algorith (0 = CRYPT64, 1 = CRYPT65, 2 = CRYPT128, 3 = CRYPT256)
+
+0x20: (uint64): Version number. For consistency, the version number will be stored in the file in versions 1.5 and higher
++ Lowest 8 bits correspond to patch, next 8 bits are minor, and the last 8 are for major (ex. 1.5.2 = 0x00010502)
+0x28 (char[8]): VAULT magic string
+
+
+
+
++ all FILE pointers are relative to the beginning of file data
++ There are several solutions to encryption, but the most secure on is to encrypt all data PAST the initial headers
++ Using AES256 encryption purely in file names would add aditional overhead, and it would result in the encrypted data including null terminators. Encryption will either start at the beginning of the file, or at the beginning of the nameTree
++ all types are to be stored in little endian format
+
+||file nameTree spec||:
+
++ File tags store several key pieces of info:
+
+File Tag Array Header:
+0x0 (uint64): How many files
+0x8 (uint64): extra blank space
+
+Offsets: 
+0x0 (uint64): Length of tag in bytes
+0x8 (uint64): file flags
+0x10 (uint64): Pointer to the first byte of file data blob (relative to dataTree)
+0x18 (uint64): size of file in bytes
+0x20 (uint64): file encryption salt
+0x28 (char[]): Beginning of fileName char array + null terminator (length is rounded up to the nearest multiple of 8)
+0x.. (void): Pad to the nearest multiple of 8
+
+File flags:
+%0x1: Boolean value that stores whether a file is a directory
+
+Directories:
++ The pointer at offset 0x10 will instead be a pointer to the beginning of the coresponding file tag array header
+
+
+||file data spec||:
+
++ file data is encrypted by via aes256 OR benc
++ its just every file's data concatenated together because thats only what we need
+
+Spec updates:
+
+v2.0: file data length must now be a multiple of 32 bytes (instead of 8)
+Files are now individually encrypted and have their own salt
+The beginning of the filename char array in a file tag is now at offset 0x28 instead of 0x20
+
