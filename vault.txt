@@ -27,7 +27,8 @@ File Tag Array Header:
 
 Offsets: 
 0x0 (uint64): Length of tag in bytes
-0x8 (uint64): file flags
+0x8 (uint32): file flags
+0xC (int32): Signed 32-bit UNIX Epoch date of creation
 0x10 (uint64): Pointer to the first byte of file data blob (relative to dataTree)
 0x18 (uint64): size of file in bytes
 0x20 (uint64): file encryption salt
