@@ -9,6 +9,8 @@
 #include <chrono>
 #include <iomanip>
 #include <unistd.h>
+#include "base.h"
+#include "encryption.h"
 #include "defs.h"
 
 bool quiet = 0;
@@ -17,7 +19,7 @@ bool quiet = 0;
 
 
 
-void createArchiveFromDirectory(const std::string& d, const std::string& passwd, int method) {
+void createArchiveFromDirectory(const std::string& d, const std::string& passwd, const vaultConfig* cfg) {
 	#ifdef ENABLE_DEBUG
 		std::cout << "Creating archive from \"" << d << "\"" << std::endl;	
 	#endif	
@@ -25,6 +27,7 @@ void createArchiveFromDirectory(const std::string& d, const std::string& passwd,
 	
 	size_t dataTreeOffset = 0;
 	size_t nameTreeOffset = 0;
+	uint64_t totalSize = 0;
 	dirStack stack;
 	int depth = 0;
 	//printf("stack has not been bushed\n");
@@ -46,14 +49,14 @@ void createArchiveFromDirectory(const std::string& d, const std::string& passwd,
 					if (!quiet) {std::cout << "-> " << entry.path() << " Dir? " << std::filesystem::is_directory(entry.path()) << std::endl; };
 				#endif
 				fname = entry.path().filename();
-				if (fname.c_str()[0] != '.') {	
-					nameTreeOffset=nameTree.length;	
-					nameTree.add(48 + ((fname.size()+1)>>3)*8);
-					uint64_t is_dir = std::filesystem::is_directory(entry.path());
-					((uint64_t*)nameTree.data)[nameTreeOffset>>3] = 48 + ((fname.size()+1)>>3)*8;
-					((uint64_t*)nameTree.data)[(nameTreeOffset>>3) + 1] = is_dir;
-					strcpy((char*)( nameTree.data + nameTreeOffset + 40), (char*)fname.c_str());
+				if (fname.c_str()[0] != '.' && ((!cfg->noSymlink && depth < 16) || !(std::filesystem::is_symlink(entry.path())))) {
+						uint64_t is_dir = std::filesystem::is_directory(entry.path());
 					if (is_dir) {
+						nameTreeOffset=nameTree.length;	
+						nameTree.add(48 + ((fname.size()+1)>>3)*8);
+						((uint64_t*)nameTree.data)[nameTreeOffset>>3] = 48 + ((fname.size()+1)>>3)*8;
+						((uint64_t*)nameTree.data)[(nameTreeOffset>>3) + 1] = 1;
+						strcpy((char*)( nameTree.data + nameTreeOffset + 40), (char*)fname.c_str());
 						stack.top->addDir(entry.path(), (uint64_t)((nameTreeOffset + 16)>>3));
 						#ifdef ENABLE_DEBUG
 							if (!quiet) {std::cout << "& Added " << (uint64_t)((nameTreeOffset + 16)>>3) << " to pointerList" << std::endl;};
@@ -61,36 +64,52 @@ void createArchiveFromDirectory(const std::string& d, const std::string& passwd,
 					} else {
 						
 					
-						stack.top->addFile(entry.path());
 						FILE* fptr = fopen(entry.path().c_str(), "rb");
-						if (fptr == NULL) {std::cerr << "Failed to open file" << std::endl;};
-						fseek(fptr, 0L, SEEK_END);
-						size_t flength = ftell(fptr);
-						rewind(fptr);
-						fileTreeList.push_back(new vaultArchiveFile);
-						vaultArchiveFile* currentFile = fileTreeList[fileTreeList.size() - 1];
-						currentFile->name = (char*)malloc(strlen(entry.path().c_str()) + 1);
-						strcpy(currentFile->name, entry.path().c_str());
-						currentFile->size = flength;
+						if (fptr == NULL) {
+							std::cerr << "Failed to open file \"" << entry.path() << "\"" << std::endl;
+						} else {
+							nameTreeOffset=nameTree.length;	
+							nameTree.add(48 + ((fname.size()+1)>>3)*8);
+							((uint64_t*)nameTree.data)[nameTreeOffset>>3] = 48 + ((fname.size()+1)>>3)*8;
+							((uint64_t*)nameTree.data)[(nameTreeOffset>>3) + 1] = 0;
+							strcpy((char*)( nameTree.data + nameTreeOffset + 40), (char*)fname.c_str());
 
-						
-						((uint64_t*)nameTree.data)[(nameTreeOffset>>3) + 2] = dataTreeOffset;
-						((uint64_t*)nameTree.data)[(nameTreeOffset>>3) + 3] = flength;
-						((uint64_t*)nameTree.data)[(nameTreeOffset>>3) + 4] = currentFile->salt;
-						dataTreeOffset+=(flength >> 5) * 32 + 32;
-						//dataTree.add((flength>>5) * 32 + 32);
-						//fread(dataTree.data + dataTreeOffset,1,flength,fptr);
-						fclose(fptr);
-													
-						if (!quiet) {std::cout << "Added " << entry.path() << " to dataTree, size -> " << + dataTreeOffset << std::endl;};
-					
+							stack.top->addFile(entry.path());
+
+							fseek(fptr, 0L, SEEK_END);
+							size_t flength = ftell(fptr);
+							totalSize+=flength;
+							rewind(fptr);
+							fileTreeList.push_back(new vaultArchiveFile);
+							vaultArchiveFile* currentFile = fileTreeList[fileTreeList.size() - 1];
+							currentFile->name = (char*)malloc(strlen(entry.path().c_str()) + 1);
+							strcpy(currentFile->name, entry.path().c_str());
+							currentFile->size = flength;
+							if (cfg->headless == true) {
+								auto ftime = std::filesystem::last_write_time(entry.path());
+								auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(ftime - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
+								std::time_t cftime = std::chrono::system_clock::to_time_t(sctp);
+								((int32_t*)nameTree.data)[(nameTreeOffset>>2) + 3] = (int32_t)cftime;
+							}
+							((uint64_t*)nameTree.data)[(nameTreeOffset>>3) + 2] = dataTreeOffset;
+							((uint64_t*)nameTree.data)[(nameTreeOffset>>3) + 3] = flength;
+							((uint64_t*)nameTree.data)[(nameTreeOffset>>3) + 4] = currentFile->salt;
+							dataTreeOffset+=(flength >> 5) * 32 + 32;
+							//dataTree.add((flength>>5) * 32 + 32);
+							//fread(dataTree.data + dataTreeOffset,1,flength,fptr);
+							fclose(fptr);
+														
+							if (!quiet && flength > 65536) {std::cout << "Added " << entry.path() << " to dataTree, size -> " << + dataTreeOffset << std::endl;};
+						}
 
 					
-					}				
+					}	
+								
 				} else {
-					if (!quiet) {std::cout << ":: file is hidden, skipping..." << std::endl;};
+					if (!quiet) {std::cout << ":: file is hidden or symlink, skipping..." << std::endl;};
 				
 				}
+			
 			}
 			printf("%llu, %zu\n", stack.top->headerLocation, nameTree.length);
 			((uint64_t*)nameTree.data)[stack.top->headerLocation] = (uint64_t)(stack.top->fileLength + stack.top->dirLength);
@@ -113,9 +132,9 @@ void createArchiveFromDirectory(const std::string& d, const std::string& passwd,
 			if (!quiet) {std::cout << "Popping stack from depth " << (depth+1) << " -> " << depth << std::endl;};
 		}	
 	}
-	if (method == CRYPT256) {
+	if (cfg->method == CRYPT256) {
 		nameTree.add((32 - (nameTree.length % 32)) % 32);
-	} else if (method == CRYPT128) {
+	} else if (cfg->method == CRYPT128) {
 		nameTree.add((16 - (nameTree.length % 16)) % 16);
 	}
 
@@ -124,8 +143,9 @@ void createArchiveFromDirectory(const std::string& d, const std::string& passwd,
 	uint64_t* frontBuffer = (uint64_t*)calloc(32, sizeof(uint64_t));
 	frontBuffer[0] = 256;
 	frontBuffer[1] = 256+nameTree.length;
-	frontBuffer[3] = method;
-	frontBuffer[4] = 0x00020004;
+	frontBuffer[3] = cfg->method;
+	frontBuffer[4] = 0x00020100;
+	frontBuffer[6] = totalSize;
 	sprintf((char*)(frontBuffer + 5), "VAULT\0\0\0");
 	std::random_device rd;
 	std::mt19937_64 gen(rd());
@@ -133,48 +153,49 @@ void createArchiveFromDirectory(const std::string& d, const std::string& passwd,
 	uint64_t salt = dist(gen);
 
 	frontBuffer[2] = salt;
-	if (method == CRYPT256) {
+	if (cfg->method == CRYPT256) {
 
 		if (!quiet) {std::cout << "Encrypting dataTree... (256-bit)" << std::endl;};
 		encryptBinaryBlob256(nameTree.data, nameTree.length, passwd.c_str(), salt);
-	} else if (method == CRYPT128) {
+	} else if (cfg->method == CRYPT128) {
 
 		if (!quiet) {std::cout << "Encrypting dataTree... (128-bit)" << std::endl;};
 		encryptBinaryBlob128(nameTree.data, nameTree.length, passwd.c_str(), salt);
-	} else if (method == CRYPT64 || method == CRYPT65) {
+	} else if (cfg->method == CRYPT64 || cfg->method == CRYPT65) {
 
 		if (!quiet) {std::cout << "Encrypting dataTree... (Legacy / 64-bit)" << std::endl;};
-		encryptBinaryBlob(nameTree.data, nameTree.length, passwd.c_str(), salt, method);
+		encryptBinaryBlob(nameTree.data, nameTree.length, passwd.c_str(), salt, cfg->method);
 
 	}
 	FILE* fout = fopen((d + ".vault").c_str(), "wb");
 	fwrite(frontBuffer, 8, 32, fout);
 	fwrite(nameTree.data, 1, nameTree.length, fout);
 	//fwrite(dataTree.data, 1, dataTree.length, fout);
-	int numFiles = fileTreeList.size();
-	
-	
-	blob currentFileBuffer;
-	size_t fileLengthRounded;
-	for (int i = 0;i < numFiles;i++) {
-		FILE* currentFile = fopen(fileTreeList[i]->name, "rb");
-		fileLengthRounded = (fileTreeList[i]->size >> 5) * 32 + 32;
-		currentFileBuffer.length = 0;
-		currentFileBuffer.add(fileLengthRounded);
-		if (!quiet) {std::cout << "Adding -> \"" << fileTreeList[i]->name << "\" to dataTree" << std::endl;};
-		fread(currentFileBuffer.data, 1, fileTreeList[i]->size, currentFile);
-		if (method == CRYPT256) {
-			encryptBinaryBlob256(currentFileBuffer.data, fileLengthRounded, passwd.c_str(), fileTreeList[i]->salt);
-		} else if (method == CRYPT128) {
-			encryptBinaryBlob128(currentFileBuffer.data, fileLengthRounded, passwd.c_str(), fileTreeList[i]->salt);
-		} else if (method == CRYPT64 || method == CRYPT65) {
-			encryptBinaryBlob(currentFileBuffer.data, fileLengthRounded, passwd.c_str(), fileTreeList[i]->salt, method);
+	if (cfg->headless == false) {
+		int numFiles = fileTreeList.size();
+		
+		
+		blob currentFileBuffer;
+		size_t fileLengthRounded;
+		for (int i = 0;i < numFiles;i++) {
+			FILE* currentFile = fopen(fileTreeList[i]->name, "rb");
+			fileLengthRounded = (fileTreeList[i]->size >> 5) * 32 + 32;
+			currentFileBuffer.length = 0;
+			currentFileBuffer.add(fileLengthRounded);
+			if (!quiet) {std::cout << "Adding -> \"" << fileTreeList[i]->name << "\" to dataTree" << std::endl;};
+			fread(currentFileBuffer.data, 1, fileTreeList[i]->size, currentFile);
+			if (cfg->method == CRYPT256) {
+				encryptBinaryBlob256(currentFileBuffer.data, fileLengthRounded, passwd.c_str(), fileTreeList[i]->salt);
+			} else if (cfg->method == CRYPT128) {
+				encryptBinaryBlob128(currentFileBuffer.data, fileLengthRounded, passwd.c_str(), fileTreeList[i]->salt);
+			} else if (cfg->method == CRYPT64 || cfg->method == CRYPT65) {
+				encryptBinaryBlob(currentFileBuffer.data, fileLengthRounded, passwd.c_str(), fileTreeList[i]->salt, cfg->method);
+			}
+			delete fileTreeList[i];
+			fclose(currentFile);
+			fwrite(currentFileBuffer.data, 1, fileLengthRounded, fout);
 		}
-		delete fileTreeList[i];
-		fclose(currentFile);
-		fwrite(currentFileBuffer.data, 1, fileLengthRounded, fout);
 	}
-
 	fclose(fout);
 	free(frontBuffer);
 }
@@ -234,7 +255,7 @@ void createDirectoryFromArchive(const std::string& d, const std::string& passwd)
 			fileName.push(rootPath.str);
 			fileName.push((char*)(stack.top().offset+5));
 			if (!quiet) {std::cout << "name: " << fileName.str << " Directory: " << stack.top().offset[1] << std::endl;};
-			if (stack.top().offset[1] == 0) {
+			if (stack.top().offset[1] % 2 == 0) {
 				FILE* tempfptr = fopen(fileName.str, "wb");
 				if (tempfptr == NULL) {std::cerr << "ERROR: Could not open file!\n";};
 				uint64_t* tempFileBuffer = (uint64_t*)malloc(stack.top().offset[3] + 32);
@@ -262,7 +283,7 @@ void createDirectoryFromArchive(const std::string& d, const std::string& passwd)
 				free(tempFileBuffer);
 				stack.top().offset+=stack.top().offset[0]>>3;
 				stack.top().progress++;
-			} else if (stack.top().offset[1] == 1) {
+			} else if (stack.top().offset[1] % 2 == 1) {
 				rootPath.push((char*)(stack.top().offset + 5));
 				rootPath.push("/");
 
@@ -319,8 +340,11 @@ void createDirectoryFromArchive(const std::string& d, const std::string& passwd)
 
 
 int main(int argc, char* argv[]) {
-	int method = CRYPT128;
-	std::cout << "Steamroller v2.0.4" << std::endl;
+	vaultConfig cfg;
+	cfg.method = CRYPT128;
+	cfg.headless = false;
+	cfg.noSymlink = true;
+	std::cout << "Steamroller v2.1.0" << std::endl;
 	//uint128_t num0;
 	//uint128_t num1;
 	//num0.add(0x123456789abcdeff);
@@ -334,58 +358,74 @@ int main(int argc, char* argv[]) {
 	std::string passwd;
 	if (argc > 3) {
 		for (int i = 3;i < argc;i++) {
-			if (strcmp(argv[i], "quiet") == 0) {quiet = 1;};
-			if (strcmp(argv[i], "c256") == 0) {method = CRYPT256;};
-			if (strcmp(argv[i], "c65") == 0) {method = CRYPT65;};
-			if (strcmp(argv[i], "c64") == 0) {method = CRYPT64;};
-			if (strcmp(argv[i], "nocrypt") == 0) {method = NOCRYPT;};
+			if (strcmp(argv[i], "--quiet") == 0 || strcmp(argv[i], "quiet") == 0) {quiet = 1;};
+			if (strcmp(argv[i], "--c256") == 0 || strcmp(argv[i], "c256") == 0) {cfg.method = CRYPT256;};
+			if (strcmp(argv[i], "--c65") == 0 || strcmp(argv[i], "c65") == 0) {cfg.method = CRYPT65;};
+			if (strcmp(argv[i], "--c64") == 0 || strcmp(argv[i], "c64") == 0) {cfg.method = CRYPT64;};
+			if (strcmp(argv[i], "--nocrypt") == 0 || strcmp(argv[i], "nocrypt") == 0) {cfg.method = NOCRYPT;};
+			if (strcmp(argv[i], "--enable-symlinks") == 0 || strcmp(argv[i], "--enable-symlink") == 0 || strcmp(argv[i], "symlink") == 0) {cfg.noSymlink = false;};
 		}
 	} else if (argc < 2) {
 		std::cout << "No arguments!" << std::endl;
 		return 0;
 	}
-	if (strcmp(argv[1], "create") == 0) {
+	if (strcmp(argv[1], "create") == 0 || strcmp(argv[1], "index") == 0) {
 		if (argc < 3) {std::cerr << "Not enough arguments!" << std::endl;return -1;};
-		std::cout << "Enter a password: ";
-		#ifndef _WIN32
-			system("stty -echo");
-		#endif
-		std::cin >> passwd;
-		#ifndef _WIN32
-			system("stty echo");
-		#endif
-		std::cout << std::endl << "Confirm password: ";
 		std::string passwdConfirm;
-		#ifndef _WIN32
-			system("stty -echo");
+		if (cfg.method != NOCRYPT) {
+			std::cout << "Enter a password: ";
+			#ifndef _WIN32
+				system("stty -echo");
+			#endif
+			std::cin >> passwd;
+			#ifndef _WIN32
+				system("stty echo");
+			#endif
+			std::cout << std::endl << "Confirm password: ";
+			
+			#ifndef _WIN32
+				system("stty -echo");
+			#endif
+			std::cin >> passwdConfirm;
+			#ifndef _WIN32
+				system("stty echo");
 		#endif
-		std::cin >> passwdConfirm;
-		#ifndef _WIN32
-			system("stty echo");
-		#endif
-		if (passwd == passwdConfirm) {
+		}
+		if (passwd == passwdConfirm || cfg.method == NOCRYPT) {
 			std::cout << std::endl;
-			createArchiveFromDirectory(argv[2], passwd, method);
+			if (strcmp(argv[1], "index") == 0) {
+				cfg.headless = true;
+			}
+			createArchiveFromDirectory(argv[2], passwd, &cfg);
 		} else {
 			std::cout << std::endl << "Passwords don't match!" << std::endl;
 		}
 	} else if (strcmp(argv[1], "extract") == 0) {
 		if (argc < 3) {std::cerr << "Not enough arguments!" << std::endl;return -1;};
-
-		std::cout << "Enter a password: ";
-		#ifndef _WIN32
-			system("stty -echo");
-		#endif
-		std::cin >> passwd;
-		#ifndef _WIN32
-			system("stty echo");
-		#endif
-		std::cout << std::endl;
+		uint64_t initialBuffer[32];
+		FILE* fptr = fopen(argv[2], "rb");
+		if (fptr == NULL) {
+			std::cerr << "No such file or directory!" << std::endl;
+			return -1;
+		}
+		fread(initialBuffer, sizeof(uint64_t), 32, fptr);
+		fclose(fptr);
+		if (initialBuffer[3] != NOCRYPT) {
+			std::cout << "Enter a password: ";
+			#ifndef _WIN32
+				system("stty -echo");
+			#endif
+			std::cin >> passwd;
+			#ifndef _WIN32
+				system("stty echo");
+			#endif
+			std::cout << std::endl;
+		}
 		createDirectoryFromArchive(argv[2], passwd);
 
 	} else if (strcmp(argv[1], "strip") == 0) {
 		if (argc < 3) {std::cerr << "Not enough arguments!" << std::endl;return -1;};
-		std::cout << "note: decrypt command only works for VAULT version 1.4 and below" << std::endl;
+		std::cout << "note: decrypt command only works for VAULT version <2.0.0" << std::endl;
 		std::cout << "Enter a password: ";
 		#ifndef _WIN32
 			system("stty -echo");
@@ -410,8 +450,7 @@ int main(int argc, char* argv[]) {
 	} else {
 		if (argc < 3) {std::cerr << "Not enough arguments!" << std::endl;return -1;};
 	}
-	//encryptBinaryBlob(NULL, 1024, "TheIndustrialRevolutionAndItsConsequences");
-	//encryptBinaryBlob(NULL, 1024, "NiggaNiggeNiggi");
+
 	std::cout << "Hello World!" << std::endl;
 	usleep(5000000);
 	return 0;
