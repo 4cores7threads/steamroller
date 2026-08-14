@@ -3,13 +3,11 @@
 0x0 (uint64): Pointer to beginning of nameTree. By default this will (probably) be at 256 bytes (0x100)
 0x8 (uint64): Pointer to the beginning of file data, must be a multiple of 8 bytes
 0x10 (uint64): Encryption salt
-0x18: (uint64): Encryption algorith (0 = CRYPT64, 1 = CRYPT65, 2 = CRYPT128, 3 = CRYPT256)
-
-0x20: (uint64): Version number. For consistency, the version number will be stored in the file in versions 1.5 and higher
+0x18 (uint64): Encryption algorithm (0 = CRYPT64, 1 = CRYPT65, 2 = CRYPT128, 3 = CRYPT256, 4 = NOCRYPT)
+0x20 (uint64): Version number. For consistency, the version number will be stored in the file in versions 1.5 and higher
 + Lowest 8 bits correspond to patch, next 8 bits are minor, and the last 8 are for major (ex. 1.5.2 = 0x00010502)
 0x28 (char[8]): VAULT magic string
-
-
+0x30 (uint64): Total size of all files in archive in bytes
 
 
 + all FILE pointers are relative to the beginning of file data
@@ -48,6 +46,7 @@ Directories:
 + its just every file's data concatenated together because thats only what we need
 
 Spec updates:
+v2.1.0: File date information has been added, and the combined size of all files is now present on the initial header
 
 v2.0: file data length must now be a multiple of 32 bytes (instead of 8)
 Files are now individually encrypted and have their own salt
