@@ -8,7 +8,9 @@
 #include <random>
 #include <chrono>
 #include <iomanip>
+#include "base.h"
 #include "defs.h"
+#include "encryption.h"
 
 extern bool quiet;
 
