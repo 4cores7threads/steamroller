@@ -145,7 +145,9 @@ void createArchiveFromDirectory(const std::string& d, const std::string& passwd,
 	frontBuffer[1] = 256+nameTree.length;
 	frontBuffer[3] = cfg->method;
 	frontBuffer[4] = 0x00020100;
-	frontBuffer[6] = totalSize;
+	if (cfg->headless) {
+		frontBuffer[6] = totalSize;
+	}
 	sprintf((char*)(frontBuffer + 5), "VAULT\0\0\0");
 	std::random_device rd;
 	std::mt19937_64 gen(rd());
