@@ -8,11 +8,11 @@
 #include <random>
 #include <chrono>
 #include <iomanip>
-#include "defs.h"
+#include "encryption.h"
 
 extern bool quiet;
 
-//encryption.cpp v1.0.0
+//encryption.cpp v1.0.1
 
 void encryptBinaryBlob256(void* b, size_t size, const char* pwd, uint64_t salt, bool persist) {
 	auto then = std::chrono::high_resolution_clock::now();
@@ -23,7 +23,7 @@ void encryptBinaryBlob256(void* b, size_t size, const char* pwd, uint64_t salt, 
 
 	uint256_t now;
 	uint64_t* blob = (uint64_t*)b;
-	size_t pwdLength = max(128 + strlen(pwd), strlen(pwd) * 2);
+	size_t pwdLength = mymax(128 + strlen(pwd), strlen(pwd) * 2);
 	size_t origLength = strlen(pwd);
 	char* pwdString = (char*)calloc(pwdLength + 1,sizeof(char));
 	for (int i = 0;(i + origLength) < pwdLength;i+=origLength) {
@@ -31,7 +31,7 @@ void encryptBinaryBlob256(void* b, size_t size, const char* pwd, uint64_t salt, 
 		std::memcpy(pwdString+i, pwd, origLength);
 	}
 	//std::cout << pwdString << std::endl;
-	size_t numCycles = max(64, strlen(pwd));
+	size_t numCycles = mymax(64, strlen(pwd));
 	uint256_t* keylist = new uint256_t[numCycles];
 	for (int i = 0;i < numCycles;i++) {
 		std::memcpy(keylist[i].data.d64, pwdString + i, 4 * sizeof(uint64_t));
@@ -99,7 +99,7 @@ void encryptBinaryBlob128(void* b, size_t size, const char* pwd, uint64_t salt, 
 	uint128_t now;
 	
 	uint64_t* blob = (uint64_t*)b;
-	size_t pwdLength = max(64 + strlen(pwd), strlen(pwd) * 2);
+	size_t pwdLength = mymax(64 + strlen(pwd), strlen(pwd) * 2);
 	size_t origLength = strlen(pwd);
 	char* pwdString = (char*)calloc(pwdLength + 1,sizeof(char));
 	for (int i = 0;(i + origLength) < pwdLength;i+=origLength) {
@@ -107,7 +107,7 @@ void encryptBinaryBlob128(void* b, size_t size, const char* pwd, uint64_t salt, 
 		std::memcpy(pwdString+i, pwd, origLength);
 	}
 	//std::cout << pwdString << std::endl;
-	size_t numCycles = max(32, strlen(pwd));
+	size_t numCycles = mymax(32, strlen(pwd));
 	uint128_t* keylist = new uint128_t[numCycles];
 	for (int i = 0;i < numCycles;i++) {
 		std::memcpy(keylist[i].data.d64, pwdString + i, 2 * sizeof(uint64_t));
@@ -162,7 +162,7 @@ void encryptBinaryBlob(void* b, size_t size, const char* pwd, uint64_t salt, int
 
 	uint64_t now;
 
-	size_t pwdLength = max(32 + strlen(pwd), strlen(pwd) * 2);
+	size_t pwdLength = mymax(32 + strlen(pwd), strlen(pwd) * 2);
 	size_t origLength = strlen(pwd);
 	char* pwdString = (char*)calloc(pwdLength + 1,sizeof(char));
 	for (int i = 0;(i + origLength) < pwdLength;i+=origLength) {
@@ -170,7 +170,7 @@ void encryptBinaryBlob(void* b, size_t size, const char* pwd, uint64_t salt, int
 		std::memcpy(pwdString+i, pwd, origLength);
 	}
 	//std::cout << pwdString << std::endl;
-	size_t numCycles = max(16, strlen(pwd));
+	size_t numCycles = mymax(16, strlen(pwd));
 	uint64_t* keylist = new uint64_t[numCycles];
 	for (int i = 0;i < numCycles;i++) {
 		std::memcpy(keylist + i, pwdString + i, sizeof(uint64_t));
