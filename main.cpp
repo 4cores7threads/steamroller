@@ -44,12 +44,13 @@ void createArchiveFromDirectory(const std::string& d, const std::string& passwd,
 		if (stack.top->progress == 0) {
 			stack.top->fileLength = 0;
 			stack.top->dirLength = 0;
-			for (const auto & entry : std::filesystem::directory_iterator(stack.top->rootPath)) {
+			std::error_code fserror;
+			for (const auto & entry : std::filesystem::directory_iterator(stack.top->rootPath, fserror)) {
 				#ifdef ENABLE_DEBUG
 					if (!quiet) {std::cout << "-> " << entry.path() << " Dir? " << std::filesystem::is_directory(entry.path()) << std::endl; };
 				#endif
 				fname = entry.path().filename();
-				if (fname.c_str()[0] != '.' && ((!cfg->noSymlink && depth < 16) || !(std::filesystem::is_symlink(entry.path())))) {
+				if (fname.c_str()[0] != '.' && ((!cfg->noSymlink && depth < 2) || !(std::filesystem::is_symlink(entry.path())))) {
 						uint64_t is_dir = std::filesystem::is_directory(entry.path());
 					if (is_dir) {
 						nameTreeOffset=nameTree.length;	
@@ -346,7 +347,7 @@ int main(int argc, char* argv[]) {
 	cfg.method = CRYPT128;
 	cfg.headless = false;
 	cfg.noSymlink = true;
-	std::cout << "Steamroller v2.1.0" << std::endl;
+	std::cout << "Steamroller v2.1.1" << std::endl;
 	//uint128_t num0;
 	//uint128_t num1;
 	//num0.add(0x123456789abcdeff);
