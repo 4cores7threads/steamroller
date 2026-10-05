@@ -9,7 +9,7 @@
 #include <chrono>
 #include <iomanip>
 
-//defs.h v1.0.0
+//defs.h v1.0.1
 
 #define CRYPT64 0
 #define CRYPT65 1
@@ -25,9 +25,12 @@ void decryptLegacyVault(const std::string& d, const std::string& passwd);
 
 class vaultConfig {
 	public:
-		int method;
-		bool headless;
-		bool noSymlink;
+		int method = CRYPT128;
+		bool headless = false;
+		bool noSymlink = true;
+		bool stealth = false;
+		bool recursiveSizes = false;
+		bool datetime = false;
 };
 
 
@@ -56,6 +59,7 @@ class directory {
 		size_t dirLength = 0;
 		uint64_t headerLocation = 0;
 		int progress = 0;
+		uint64_t fileSizeBytes;
 		size_t fileBufferLength;
 		size_t dirBufferLength;
 		std::string rootPath;
@@ -78,24 +82,6 @@ class directory {
 			#endif
 			//free(fileList);
 			//free(dirList);
-		}
-		inline void addFile(const std::string& name) {
-			/*if (fileLength >= fileBufferLength) {
-				#ifdef ENABLE_DEBUG
-					std::cout << "Reallocating directory buffer from " << fileBufferLength << " -> " << fileBufferLength*2 << std::endl;
-				#endif
-
-				fileBufferLength*=2;
-				fileList = (std::string*)std::realloc(fileList,fileBufferLength * sizeof(std::string));
-
-				if (fileList == NULL) {
-					std::cout << "fileList reallocation returned NULL" << std::endl;
-				}
-
-			}*/
-			//fileList[fileLength] = name;
-			fileList.push_back(name);
-			fileLength++;	
 		}
 		inline void addDir(const std::string& name, uint64_t ptr) {
 			/*if (dirLength >= dirBufferLength) {
