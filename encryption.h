@@ -9,7 +9,7 @@
 #include <chrono>
 #include <iomanip>
 
-//encryption.h v1.0.0
+//encryption.h v1.1.1
 
 #define CRYPT64 0
 #define CRYPT65 1
@@ -22,7 +22,10 @@
 void encryptBinaryBlob256(void*, size_t, const char*, uint64_t, bool persist = 0);
 void encryptBinaryBlob128(void*, size_t, const char*, uint64_t, bool persist = 0);
 void encryptBinaryBlob(void*, size_t, const char*, uint64_t, int method = CRYPT65, bool persist = 0);
-
+void obfuscateString(const char*, char*, uint64_t);
+int deobfuscateString(const char* src, char* dest, uint64_t salt);
+char* lastSlash(const char* src, int offset = 0);
+char* lastChar(const char* src, char c, int offset = 0);
 
 typedef union {
 	uint64_t d64[4] = {0, 0, 0, 0};
