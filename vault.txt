@@ -6,8 +6,10 @@
 0x18 (uint64): Encryption algorithm (0 = CRYPT64, 1 = CRYPT65, 2 = CRYPT128, 3 = CRYPT256, 4 = NOCRYPT)
 0x20 (uint64): Version number. For consistency, the version number will be stored in the file in versions 1.5 and higher
 + Lowest 8 bits correspond to patch, next 8 bits are minor, and the last 8 are for major (ex. 1.5.2 = 0x00010502)
-0x28 (char[8]): VAULT magic string
-0x30 (uint64): Total size of all files in archive in bytes
+0x28 (char[8]): VAULT magic string (v2.0)
+0x30 (uint64): Total size of all files in archive in bytes (v2.10)
+0x38 (uint64): Dedicated null block (used to determine if the file's initial buffer is encrypted) (v2.2.0)
++ If the initial buffer is encrypted, the salt used will correspond to the file's length in bytes
 
 
 + all FILE pointers are relative to the beginning of file data
