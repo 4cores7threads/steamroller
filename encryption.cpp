@@ -8,14 +8,14 @@
 #include <random>
 #include <chrono>
 #include <iomanip>
+#include <unistd.h>
 #include "encryption.h"
 
 extern bool quiet;
 
-//encryption.cpp v1.0.1
+//encryption.cpp v1.1.1
 
 void encryptBinaryBlob256(void* b, size_t size, const char* pwd, uint64_t salt, bool persist) {
-	auto then = std::chrono::high_resolution_clock::now();
 	static uint256_t pastKey;
 	static uint64_t pastOffset;
 	static bool pastPersist = 0;
@@ -83,14 +83,10 @@ void encryptBinaryBlob256(void* b, size_t size, const char* pwd, uint64_t salt, 
 	pastPersist = persist;
 	delete keylist;
 	free(pwdString);
-	auto current = std::chrono::high_resolution_clock::now();
-	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(current - then);
-	std::cout << "Encrypted " << size << " Bytes of data in " << duration.count() << " Microseconds" << std::endl;
 
 }
 
 void encryptBinaryBlob128(void* b, size_t size, const char* pwd, uint64_t salt, bool persist) {
-	auto then = std::chrono::high_resolution_clock::now();
 	static uint128_t pastKey;
 	static uint64_t pastOffset;
 	static bool pastPersist = 0;
@@ -146,14 +142,10 @@ void encryptBinaryBlob128(void* b, size_t size, const char* pwd, uint64_t salt, 
 	}
 	delete keylist;
 	free(pwdString);
-	auto current = std::chrono::high_resolution_clock::now();
-	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(current - then);
-	std::cout << "Encrypted " << size << " Bytes of data in " << duration.count() << " Microseconds" << std::endl;
 
 }
 
 void encryptBinaryBlob(void* b, size_t size, const char* pwd, uint64_t salt, int method, bool persist) {
-	auto then = std::chrono::high_resolution_clock::now();
 	uint64_t* blob = (uint64_t*)b;
 	static uint64_t pastKey;
 	static uint64_t pastOffset;
@@ -208,8 +200,74 @@ void encryptBinaryBlob(void* b, size_t size, const char* pwd, uint64_t salt, int
 	}
 	delete keylist;
 	free(pwdString);
-	auto current = std::chrono::high_resolution_clock::now();
-	auto duration = std::chrono::duration_cast<std::chrono::microseconds>(current - then);
-	std::cout << "Encrypted " << size << " Bytes of data in " << duration.count() << " Microseconds" << std::endl;
 
 }
+
+void obfuscateString(const char* src, char* dest, uint64_t salt) {
+	const static char* hexChars = "0123456789ABCDEF";
+	char temp[17];
+	for (int i = 0;i < 16;i++) {
+		temp[i] = rand() & 255;
+	}
+	if (strnlen(src, 17) > 16) {
+		std::cerr << "[obfuscateString] (Warning) Input string is too long" << std::endl;
+		return;
+	}
+	strcpy(temp, src);
+	const char* username = getlogin();
+	if (username == NULL) {
+		std::cerr << "[obfuscateString] (Warning) Can't get username" << std::endl;
+		return;
+	}
+	
+	encryptBinaryBlob128(temp, 16, username, salt, 0);
+	
+	for (int i = 8;i < 24;i++) {
+		dest[i*2 - 16] = hexChars[(temp[i & 15]>>4) & 15];
+		dest[i*2 - 15] = hexChars[temp[i & 15] & 15];
+	}
+	dest[32] = '\0';
+
+}
+
+int deobfuscateString(const char* src, char* dest, uint64_t salt) {
+	const static char hexChars[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+	0, 0, 0, 0, 0, 0, 0, 10, 11, 12, 13, 14, 15};
+	
+	for (int i = 0;i < 16;i++) {
+		if (src[i*2] < 48 || src[i*2] > 70 || src[i*2 + 1] < 48 || src[i*2 + 1] > 70) {
+			std::cerr << "[deobfuscateString] (ERROR) Invalid value in obfuscated string" << std::endl;
+			return -1;
+		}
+		dest[(i + 8) & 15] = hexChars[src[i*2] - 48] << 4;
+		dest[(i + 8) & 15] += hexChars[src[i*2 + 1] - 48];
+	}
+	const char* username = getlogin();
+	if (username == NULL) {
+		std::cerr << "[deobfuscateString] (Warning) Can't get username" << std::endl;
+		return -1;
+	}
+	encryptBinaryBlob128(dest, 16, username, salt);
+	return 0;
+}
+
+char* lastSlash(const char* src, int offset) {
+	size_t len = strnlen(src, 1024);
+	for (int i = len;i >= 0;i--) {
+		if (src[i] == '/' || src[i] == '\\') {
+			return (char*)src + i + offset;
+		}
+	}
+	return (char*)src;
+}
+
+char* lastChar(const char* src, char c, int offset) {
+	size_t len = strnlen(src, 1024);
+	for (int i = len;i >= 0;i--) {
+		if (src[i] == c) {
+			return (char*)src + i + offset;
+		}
+	}
+	return (char*)src;
+}
+
